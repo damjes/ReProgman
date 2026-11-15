@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 7514)
+Total output lines: 490
+
 | `test/ReProgman.Model.Tests` | xUnit tests for the model (xunit.v3 / Microsoft.Testing.Platform) |
 | `tools/ReProgman.IconExport` | Developer tool, never shipped: renders the committed icon assets from the app's own artwork (see "The application icon") |
 | `tools/ReProgman.IconExport` | Developer tool, never shipped: renders the committed icon assets from the app's own artwork (see "The application icon") |
@@ -216,39 +219,7 @@ conventions).
   back while dragging. Event positions are relative to the window, and a west or
   north drag moves that window, so measuring against them makes the drag an
   undamped feedback loop that visibly shakes. The MDI children are immune to this
-  because their pointer positions are relative to the workspace canvas, which
-  does not move when a child is resized.
-- Measured dimensions (compared pixel by pixel against toastytech's 640x480
-  screenshots of the original):
-  - The sizing frame is black 1 + gray band 2 + black 1 = 4px. The corner notches
-    are 22px from the edge (frame 4 + caption 18). The same for the main window
-    and the MDI children.
-  - The caption face is 18px for the main window, the children and the menu bar
-    (plus a 1px black separator line).
-  - The face of a system box or caption button is 18px wide (plus a 1px black
-    separator line).
-- The system box glyph: a BarWidth x 3 black box around a 1px-high white face,
-  with a 1px gray shadow to the right and below (+1,+1). BarWidth is 13 for the
-  main (top-level) window and 7 for an MDI child — the shorter bar is how you
-  tell a child from the main window.
-- Caption button arrows: a 4-row arrow head (widths 1,3,5,7). ▼ sits at the top
-  of the face +7 and ▲ at +6 (▲ is 1px higher in the original). The restore mark
-  stacks ▲▼ with a 1px gap. Scroll bar arrows add a 3px-wide shaft to the head
-  (7x7).
-- Button bevels are asymmetric, 1px white and 2px shadow (caption buttons, the
-  scroll bar arrow buttons and thumb). Push buttons use 2 and 2.
-- Button content is centered, by centering the ContentPresenter itself
-  (stretching it would leave the label left-aligned).
-- Menus: white background, bold text, navy background with white text for the
-  selection, gray for disabled items, and accelerator underlines shown at all
-  times. Shortcut text such as `Del` is hand-drawn text through the
-  `MenuProps.GestureText` attached property.
-- Scroll bars: 16px wide, arrow buttons with a black outline and a bevel, and a
-  fixed size (16px) thumb. The track (the shaft) is the same flat gray as the
-  buttons (measured on the original: `C0C0C0`; the dither pattern belongs to
-  Windows 95 and later, not to 3.1).
-- Buttons: a gray face, a 2px white/dark gray bevel and a black outline. The
-  default button gets a second black outline. Pressing inverts the bevel and
+  because their pointer positions are relative to the …514 tokens truncated…ng inverts the bevel and
   shifts the content by 1px. Check boxes use an X mark.
 - Fonts: Avalonia (DirectWrite/Skia) cannot enumerate GDI raster fonts (.FON,
   MS Sans Serif and friends), so the raster font look comes from a TrueType
@@ -477,8 +448,9 @@ CI runner in particular) does not have.
 - On Linux, `--no-wm-decorations` opts into X11 `override_redirect` for the main
   window when a window manager ignores Avalonia's normal undecorated hint. Since
   the window manager no longer manages this window, ReProgman moves and resizes
-  it from its own caption and frame; OS task switching and taskbar integration
-  are unavailable in this mode. The option is ignored on other backends.
+  it from its own caption and frame; minimize/maximize controls, OS task
+  switching and taskbar integration are unavailable in this mode. The option is
+  ignored on other backends.
 - The P/Invokes are fetching shell icons on Windows, and reading the pointer
   position from CoreGraphics on macOS (`MacPointer`, used only by a sizing drag).
   The macOS icon and plist parsing is all managed code (in `ReProgman.Model`,
