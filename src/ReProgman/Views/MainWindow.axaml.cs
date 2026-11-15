@@ -244,7 +244,7 @@ public partial class MainWindow : Window
         {
             if (_noWindowManagerDecorations)
             {
-                _moveStartPointer = PointToScreen(e.GetPosition(this));
+                _moveStartPointer = Avalonia.VisualExtensions.PointToScreen(this, e.GetPosition(this));
                 _moveStartWindow = Position;
                 _movingUnmanagedWindow = true;
                 e.Pointer.Capture(Caption);
@@ -259,7 +259,7 @@ public partial class MainWindow : Window
     private void OnCaptionPointerMoved(object? sender, PointerEventArgs e)
     {
         if (!_movingUnmanagedWindow) return;
-        var pointer = PointToScreen(e.GetPosition(this));
+        var pointer = Avalonia.VisualExtensions.PointToScreen(this, e.GetPosition(this));
         Position = new PixelPoint(
             _moveStartWindow.X + pointer.X - _moveStartPointer.X,
             _moveStartWindow.Y + pointer.Y - _moveStartPointer.Y);
@@ -405,7 +405,7 @@ public partial class MainWindow : Window
     {
         if (_noWindowManagerDecorations)
         {
-            var pixelPosition = PointToScreen(e.GetPosition(this));
+            var pixelPosition = Avalonia.VisualExtensions.PointToScreen(this, e.GetPosition(this));
             position = new Point(pixelPosition.X, pixelPosition.Y);
             return true;
         }
