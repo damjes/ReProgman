@@ -32,6 +32,12 @@ Entries use the desktop file's `Exec` command and are grouped by its standard
 category. Settings stay beside the executable when that directory is writable;
 otherwise they are stored in `${XDG_CONFIG_HOME:-~/.config}/ReProgman`.
 
+If an X11 window manager ignores the no-decoration hint, launch with
+`--no-wm-decorations` to bypass window-manager control for the main window. The
+ReProgman title bar can still move and resize it, but the window will not appear
+in the window manager's task switcher or taskbar. This option is for X11 and
+XWayland only.
+
 ## Build & Debug
 
 Building and running needs the .NET SDK 10.0+.

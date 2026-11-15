@@ -474,6 +474,11 @@ CI runner in particular) does not have.
   `Strings.MenuRefresh`.
 - Linux icon lookup uses common XDG themes and bitmap resources. Linux launch uses
   argument lists from `Exec` and never invokes a shell to interpret desktop files.
+- On Linux, `--no-wm-decorations` opts into X11 `override_redirect` for the main
+  window when a window manager ignores Avalonia's normal undecorated hint. Since
+  the window manager no longer manages this window, ReProgman moves and resizes
+  it from its own caption and frame; OS task switching and taskbar integration
+  are unavailable in this mode. The option is ignored on other backends.
 - The P/Invokes are fetching shell icons on Windows, and reading the pointer
   position from CoreGraphics on macOS (`MacPointer`, used only by a sizing drag).
   The macOS icon and plist parsing is all managed code (in `ReProgman.Model`,

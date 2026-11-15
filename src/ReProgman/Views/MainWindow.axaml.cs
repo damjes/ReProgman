@@ -32,6 +32,7 @@ public partial class MainWindow : Window
     private readonly ReProgmanSettings _settings;
     private readonly string? _screenshotPath;
     private readonly string? _screenshotScene;
+    private readonly bool _noWindowManagerDecorations;
     private GroupEntry? _active;
     // Minimized icons keep the default 0 so they stay on the workspace floor.
     private int _topZIndex;
@@ -44,6 +45,9 @@ public partial class MainWindow : Window
     private ResizeEdge? _resizeEdge;
     private Point _resizeStartPointer;
     private ResizeRect _resizeStartBounds;
+    private bool _movingUnmanagedWindow;
+    private PixelPoint _moveStartPointer;
+    private PixelPoint _moveStartWindow;
 
     /// <summary>
     /// Avalonia's macOS backend implements <c>BeginResizeDrag</c> as an empty
@@ -62,9 +66,12 @@ public partial class MainWindow : Window
     {
         _screenshotPath = ParseArgValue(args, "--screenshot");
         _screenshotScene = ParseArgValue(args, "--scene");
+        _noWindowManagerDecorations = OperatingSystem.IsLinux() && args.Contains("--no-wm-decorations", StringComparer.Ordinal);
         _settings = SettingsStore.Load();
 
         InitializeComponent();
+        MinButton.IsEnabled = !_noWindowManagerDecorations;
+        MaxButton.IsEnabled = !_noWindowManagerDecorations;
         RenderOptions.SetTextRenderingMode(this, TextRenderingMode.Alias);
         RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
         Icon = CreateWindowIcon();
@@ -165,6 +172,9 @@ public partial class MainWindow : Window
         MaxButton.Click += (_, _) => ToggleMaximize();
 
         Caption.PointerPressed += OnCaptionPointerPressed;
+        Caption.PointerMoved += OnCaptionPointerMoved;
+        Caption.PointerReleased += OnCaptionPointerReleased;
+        Caption.PointerCaptureLost += (_, _) => _movingUnmanagedWindow = false;
         SystemBox.PointerPressed += OnSystemBoxPointerPressed;
         Frame.PointerPressed += OnFramePointerPressed;
         Frame.PointerMoved += OnFramePointerMoved;
@@ -226,14 +236,40 @@ public partial class MainWindow : Window
 
         if (e.ClickCount == 2)
         {
-            ToggleMaximize();
+            if (!_noWindowManagerDecorations) ToggleMaximize();
             return;
         }
 
         if (!_isCustomMaximized)
         {
+            if (_noWindowManagerDecorations)
+            {
+                _moveStartPointer = PointToScreen(e.GetPosition(this));
+                _moveStartWindow = Position;
+                _movingUnmanagedWindow = true;
+                e.Pointer.Capture(Caption);
+                e.Handled = true;
+                return;
+            }
+
             BeginMoveDrag(e);
         }
+    }
+
+    private void OnCaptionPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_movingUnmanagedWindow) return;
+        var pointer = PointToScreen(e.GetPosition(this));
+        Position = new PixelPoint(
+            _moveStartWindow.X + pointer.X - _moveStartPointer.X,
+            _moveStartWindow.Y + pointer.Y - _moveStartPointer.Y);
+    }
+
+    private void OnCaptionPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        if (!_movingUnmanagedWindow) return;
+        _movingUnmanagedWindow = false;
+        e.Pointer.Capture(null);
     }
 
     private void OnSystemBoxPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -257,8 +293,8 @@ public partial class MainWindow : Window
         flyout.Items.Add(MakeMenuItem(Strings.SysRestore, _isCustomMaximized, () => SetMaximized(false)));
         flyout.Items.Add(MakeMenuItem(Strings.SysMove, false, null));
         flyout.Items.Add(MakeMenuItem(Strings.SysSize, false, null));
-        flyout.Items.Add(MakeMenuItem(Strings.SysMinimize, true, () => WindowState = WindowState.Minimized));
-        flyout.Items.Add(MakeMenuItem(Strings.SysMaximize, !_isCustomMaximized, () => SetMaximized(true)));
+        flyout.Items.Add(MakeMenuItem(Strings.SysMinimize, !_noWindowManagerDecorations, () => WindowState = WindowState.Minimized));
+        flyout.Items.Add(MakeMenuItem(Strings.SysMaximize, !_noWindowManagerDecorations && !_isCustomMaximized, () => SetMaximized(true)));
         flyout.Items.Add(new Separator());
         flyout.Items.Add(MakeMenuItem(Strings.SysClose, true, RequestExit, "Alt+F4"));
         flyout.Items.Add(new Separator());
@@ -295,7 +331,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (UsesManualResize && MacPointer.TryGetScreenPosition(out var pointer))
+        if ((UsesManualResize || _noWindowManagerDecorations) && TryGetScreenPosition(e, out var pointer))
         {
             _resizeEdge = edge;
             _resizeStartPointer = pointer;
@@ -314,7 +350,7 @@ public partial class MainWindow : Window
     {
         if (_resizeEdge is { } edge)
         {
-            ResizeTo(edge);
+            ResizeTo(edge, e);
             return;
         }
 
@@ -343,9 +379,9 @@ public partial class MainWindow : Window
     /// On macOS one point is one device-independent pixel, which is what lets
     /// the screen-space delta be applied to the size directly.
     /// </summary>
-    private void ResizeTo(ResizeEdge edge)
+    private void ResizeTo(ResizeEdge edge, PointerEventArgs e)
     {
-        if (!UsesManualResize || !MacPointer.TryGetScreenPosition(out var pointer))
+        if ((!UsesManualResize && !_noWindowManagerDecorations) || !TryGetScreenPosition(e, out var pointer))
         {
             return;
         }
@@ -363,6 +399,18 @@ public partial class MainWindow : Window
         Position = new PixelPoint((int)rect.X, (int)rect.Y);
         Width = rect.Width;
         Height = rect.Height;
+    }
+
+    private bool TryGetScreenPosition(PointerEventArgs e, out Point position)
+    {
+        if (_noWindowManagerDecorations)
+        {
+            var pixelPosition = PointToScreen(e.GetPosition(this));
+            position = new Point(pixelPosition.X, pixelPosition.Y);
+            return true;
+        }
+
+        return MacPointer.TryGetScreenPosition(out position);
     }
 
     private void OnFramePointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -451,7 +499,7 @@ public partial class MainWindow : Window
             try
             {
                 ShellLauncher.LaunchCommandLine(commandLine, dialog.RunMinimized);
-                if (_settings.MinimizeOnUse)
+                if (_settings.MinimizeOnUse && !_noWindowManagerDecorations)
                 {
                     WindowState = WindowState.Minimized;
                 }
@@ -521,7 +569,12 @@ public partial class MainWindow : Window
 
     private void OnWindowOpened(object? sender, EventArgs e)
     {
-        if (_settings.MainWindow is { State: WindowStateKind.Maximized })
+        if (_noWindowManagerDecorations && !X11UnmanagedWindow.TryEnable(this))
+        {
+            System.Diagnostics.Trace.WriteLine("--no-wm-decorations requires Avalonia's X11 backend and libX11.");
+        }
+
+        if (!_noWindowManagerDecorations && _settings.MainWindow is { State: WindowStateKind.Maximized })
         {
             SetMaximized(true);
         }
@@ -1494,7 +1547,7 @@ public partial class MainWindow : Window
         try
         {
             ShellLauncher.Launch(item.Path);
-            if (_settings.MinimizeOnUse)
+            if (_settings.MinimizeOnUse && !_noWindowManagerDecorations)
             {
                 WindowState = WindowState.Minimized;
             }
