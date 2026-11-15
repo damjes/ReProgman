@@ -5,8 +5,8 @@ public readonly record struct AppEntry(string Name, string Path);
 
 /// <summary>
 /// Supplies the platform-specific notion of "a launchable thing in a folder".
-/// The grouping rules in <see cref="StartMenuScanner"/> stay shared: Windows
-/// yields shortcut files, macOS yields application bundles.
+/// The shared scanner uses this for Windows shortcuts and macOS application
+/// bundles. Linux reads XDG desktop entries through its category-aware scanner.
 /// </summary>
 public interface IAppEntrySource
 {
@@ -66,6 +66,143 @@ public sealed class ApplicationBundleSource : IAppEntrySource
                 yield return nested;
             }
         }
+    }
+}
+
+/// <summary>Linux: installed applications are described by XDG .desktop files.</summary>
+public sealed class XdgDesktopFileSource
+{
+    public IReadOnlyList<ProgramGroup> Scan(IEnumerable<string> applicationRoots, string mainGroupName)
+    {
+        var entries = new Dictionary<string, DesktopApplication>(StringComparer.Ordinal);
+        var seenEntries = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var root in applicationRoots)
+        {
+            if (!Directory.Exists(root)) continue;
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(root, "*.desktop", SearchOption.AllDirectories)
+                             .OrderBy(path => path, StringComparer.Ordinal))
+                {
+                    var id = Path.GetRelativePath(root, file).Replace(Path.DirectorySeparatorChar, '-');
+                    if (!seenEntries.Add(id) || DesktopApplication.SuppressesLowerPriority(file)) continue;
+                    if (DesktopApplication.TryRead(file, out var app))
+                    {
+                        entries.Add(id, app);
+                    }
+                }
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        var groups = new Dictionary<string, List<ProgramItem>>(StringComparer.OrdinalIgnoreCase);
+        foreach (var app in entries.Values.OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase))
+        {
+            var group = GetGroup(app.Categories) ?? mainGroupName;
+            if (!groups.TryGetValue(group, out var items))
+            {
+                items = [];
+                groups.Add(group, items);
+            }
+            items.Add(new ProgramItem(app.Name, app.Path));
+        }
+
+        return groups.Select(pair => new ProgramGroup(pair.Key, pair.Value))
+            .OrderBy(group => !string.Equals(group.Name, mainGroupName, StringComparison.OrdinalIgnoreCase))
+            .ThenBy(group => group.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? GetGroup(IReadOnlySet<string> categories)
+    {
+        if (categories.Contains("Network") || categories.Contains("WebBrowser") || categories.Contains("Email") || categories.Contains("Chat")) return "Internet";
+        if (categories.Contains("Office")) return "Office";
+        if (categories.Contains("AudioVideo") || categories.Contains("Audio") || categories.Contains("Video")) return "Multimedia";
+        if (categories.Contains("Game")) return "Games";
+        if (categories.Contains("Development")) return "Development";
+        if (categories.Contains("System") || categories.Contains("Settings")) return "System Tools";
+        if (categories.Contains("Utility") || categories.Contains("Graphics") || categories.Contains("TextEditor")) return "Accessories";
+        return null;
+    }
+}
+
+public sealed record DesktopApplication(string Name, string Path, string Exec, string Icon, bool Terminal, IReadOnlySet<string> Categories)
+{
+    public static bool TryRead(string path, out DesktopApplication app)
+    {
+        app = null!;
+        try
+        {
+            var values = ReadDesktopEntry(path);
+            if (values.GetValueOrDefault("Type") != "Application" || IsTrue(values.GetValueOrDefault("Hidden")) ||
+                IsTrue(values.GetValueOrDefault("NoDisplay")) || string.IsNullOrWhiteSpace(values.GetValueOrDefault("Exec"))) return false;
+            var tryExec = values.GetValueOrDefault("TryExec");
+            if (!string.IsNullOrWhiteSpace(tryExec) && !ExecutableExists(tryExec)) return false;
+            var currentDesktops = (Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP") ?? "")
+                .Split(':', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var onlyShowIn = SplitList(values.GetValueOrDefault("OnlyShowIn"));
+            var notShowIn = SplitList(values.GetValueOrDefault("NotShowIn"));
+            if ((onlyShowIn.Count > 0 && !onlyShowIn.Overlaps(currentDesktops)) || notShowIn.Overlaps(currentDesktops)) return false;
+            var name = Localized(values, "Name");
+            if (string.IsNullOrWhiteSpace(name)) return false;
+            app = new DesktopApplication(name, path, values["Exec"], values.GetValueOrDefault("Icon") ?? "",
+                IsTrue(values.GetValueOrDefault("Terminal")),
+                (values.GetValueOrDefault("Categories") ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.Ordinal));
+            return true;
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    public static bool SuppressesLowerPriority(string path)
+    {
+        try
+        {
+            var values = ReadDesktopEntry(path);
+            return IsTrue(values.GetValueOrDefault("Hidden")) || IsTrue(values.GetValueOrDefault("NoDisplay"));
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
+
+    private static Dictionary<string, string> ReadDesktopEntry(string path)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        var inDesktopEntry = false;
+        foreach (var line in File.ReadLines(path))
+        {
+            var text = line.Trim();
+            if (text.StartsWith('[') && text.EndsWith(']'))
+            {
+                inDesktopEntry = text == "[Desktop Entry]";
+                continue;
+            }
+            if (!inDesktopEntry || text.Length == 0 || text.StartsWith('#')) continue;
+            var equals = text.IndexOf('=');
+            if (equals > 0) values[text[..equals]] = Unescape(text[(equals + 1)..]);
+        }
+        return values;
+    }
+
+    private static string Localized(IReadOnlyDictionary<string, string> values, string key)
+    {
+        var language = System.Globalization.CultureInfo.CurrentUICulture.Name;
+        var desktopLanguage = language.Replace('-', '_');
+        if (desktopLanguage.Length > 0 && values.TryGetValue($"{key}[{desktopLanguage}]", out var exact)) return exact;
+        var shortLanguage = language.Split('-', '_')[0];
+        return values.GetValueOrDefault($"{key}[{shortLanguage}]") ?? values.GetValueOrDefault(key) ?? "";
+    }
+
+    private static string Unescape(string value) => value.Replace("\\s", " ").Replace("\\n", "\n").Replace("\\t", "\t").Replace("\\r", "\r").Replace("\\\\", "\\");
+    private static HashSet<string> SplitList(string? value) => (value ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries).ToHashSet(StringComparer.OrdinalIgnoreCase);
+    private static bool IsTrue(string? value) => string.Equals(value, "true", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ExecutableExists(string executable)
+    {
+        if (executable.Contains(Path.DirectorySeparatorChar)) return File.Exists(executable);
+        return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
+            .Any(directory => File.Exists(Path.Combine(directory, executable)));
     }
 }
 

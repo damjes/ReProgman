@@ -40,6 +40,7 @@ conventions).
   |---|---|
   | Windows | The Start Menu `Programs` folders (user and common) |
   | macOS | `~/Applications`, `/Applications`, `/System/Applications` |
+  | Linux | `$XDG_DATA_HOME/applications`, then each `$XDG_DATA_DIRS/applications` |
 
 - Each top-level folder becomes one group, shown in an MDI child window.
 - Entries directly under a root go into the **Main** group, following the
@@ -56,11 +57,18 @@ conventions).
   |---|---|---|
   | Windows | `.lnk` / `.url` files | `desktop.ini`, hidden and system files |
   | macOS | `.app` bundles (directories) | Names starting with `.`. Bundles are not descended into |
+  | Linux | `Type=Application` `.desktop` files | `Hidden`, `NoDisplay`, invalid entries, missing `TryExec` |
 
   On macOS an `.app` is itself a directory, so an `.app` directly under a root
   becomes an item in the Main group rather than a group of its own. The display
   name is the bundle name without `.app` (no localized `CFBundleDisplayName`
   resolution).
+- Linux desktop-file IDs use relative paths with `/` replaced by `-`, as required
+  by the desktop-entry lookup rules. User entries take precedence over system
+  entries; a user `Hidden=true` entry masks the system copy. Localized `Name`
+  values follow the current UI language. Standard categories map to Program
+  Manager groups (Internet, Office, Multimedia, Games, Development, System Tools,
+  Accessories); uncategorized applications go to Main.
 - Groups are sorted alphabetically with Main first; items are sorted
   alphabetically.
 - Icons are loaded at 32x32, one after another on a dedicated background thread.
@@ -72,16 +80,24 @@ conventions).
   (`IcnsDecoder`: PNG chunks are used as they are, the older RLE 24-bit and ARGB
   chunks are expanded to BGRA, and the representation closest to 32px wins).
   When no icon can be obtained, the hand-drawn group icon art is used instead.
+- Linux resolves the desktop entry's `Icon` field from common XDG icon themes and
+  `pixmaps`; supported bitmap icons are loaded at their available size. If no
+  readable bitmap is found, the hand-drawn group icon art remains visible.
 
 ### Launching applications
 - Double-click an item, or select it and press Enter / File → Open. Windows hands
   the shortcut to `UseShellExecute` as it is; macOS passes `.app` bundles and
   documents to `open` (the same as double-clicking in Finder) and starts
-  executable files directly.
+  executable files directly. Linux parses the desktop entry's `Exec` field,
+  expands application-name/icon/desktop-file codes, omits document/URL codes
+  because Program Manager launches without a document, and starts the process
+  directly without a shell. `Terminal=true` entries use an installed terminal
+  emulator when one is available.
 - File → Run...: a dialog with a command line box, a Run Minimized check box and
   Browse...
 - Options → Minimize on Use minimizes the main window when something is launched.
 - Run Minimized has no macOS equivalent, so the check box stays but is ignored.
+- Run Minimized has no Linux equivalent and is ignored there as well.
 - A failed launch shows a Windows 3.1 style message dialog.
 
 ### Editing groups and items (File menu)
@@ -450,15 +466,14 @@ CI runner in particular) does not have.
   - `ReProgman.Model` sets `IsAotCompatible=true` to enable the AOT analyzers.
 
 ## Platform-specific implementation
-- `ReProgman.Model` is entirely OS-independent. The platform differences are
-  absorbed in two places:
-  - `IAppEntrySource` (`ShortcutFileSource` / `ApplicationBundleSource`): the
-    rules for enumerating the program folders
-  - `StorageLocation`: stepping out of the `.app` bundle, and the write probe
-- In `ReProgman` the branches are limited to `IconLoader` (Windows:
-  `IconExtractor` / macOS: `MacIconLoader`), `ShellLauncher`, `AppStorage`,
-  `MainWindow.StartMenuRoots`, `MainWindow.UsesManualResize` and
+- `ReProgman.Model` keeps the shared Program Manager data and exposes three
+  platform entry sources: Windows shortcuts, macOS application bundles, and
+  Linux XDG desktop entries. `XdgPaths` resolves XDG data and config locations.
+- In `ReProgman`, platform behavior is selected by `IconLoader`, `ShellLauncher`,
+  `AppStorage`, `MainWindow.StartMenuRoots`, `MainWindow.UsesManualResize` and
   `Strings.MenuRefresh`.
+- Linux icon lookup uses common XDG themes and bitmap resources. Linux launch uses
+  argument lists from `Exec` and never invokes a shell to interpret desktop files.
 - The P/Invokes are fetching shell icons on Windows, and reading the pointer
   position from CoreGraphics on macOS (`MacPointer`, used only by a sizing drag).
   The macOS icon and plist parsing is all managed code (in `ReProgman.Model`,

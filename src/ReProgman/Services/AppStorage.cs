@@ -13,19 +13,17 @@ public static class AppStorage
     private static string Resolve()
     {
         var portable = StorageLocation.GetPortableDirectory(AppContext.BaseDirectory);
-        // Windows keeps the original portable-only behavior: an unwritable install
-        // folder silently loses settings. macOS needs a fallback because App
-        // Translocation runs the bundle from a read-only image.
-        if (!OperatingSystem.IsMacOS())
+        // Windows keeps the original portable-only behavior. macOS can run from
+        // a translocated read-only bundle, while Linux packages are often installed
+        // below /usr and need the user's XDG configuration directory.
+        if (OperatingSystem.IsWindows())
         {
             return portable;
         }
 
-        var fallback = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "Library",
-            "Application Support",
-            "ReProgman");
+        var fallback = OperatingSystem.IsMacOS()
+            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Library", "Application Support", "ReProgman")
+            : Path.Combine(XdgPaths.ConfigHome, "ReProgman");
 
         var resolved = StorageLocation.Resolve(portable, fallback, StorageLocation.IsWritable);
         if (!string.Equals(resolved, portable, StringComparison.Ordinal))

@@ -74,9 +74,31 @@ jobs:
           path: ReProgman-osx-arm64.zip
           if-no-files-found: error
 
+  linux:
+    name: GNU/Linux (linux-x64)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install NativeAOT build dependencies
+        run: sudo apt-get update && sudo apt-get install --yes clang zlib1g-dev
+
+      - name: Publish
+        run: ./build/publish-linux.sh linux-x64
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ReProgman-linux-x64
+          path: artifacts/linux-x64/ReProgman-linux-x64.tar.gz
+          if-no-files-found: error
+
   release:
     name: Draft release
-    needs: [windows, macos]
+    needs: [windows, macos, linux]
     runs-on: ubuntu-latest
     permissions:
       # gh release create writes to the repository.
@@ -85,7 +107,7 @@ jobs:
       # gh resolves the repository from the checkout.
       - uses: actions/checkout@v7
 
-      # merge-multiple puts the three zips side by side instead of in one
+      # merge-multiple puts the release archives side by side instead of in one
       # directory per artifact.
       - uses: actions/download-artifact@v8
         with:
@@ -111,9 +133,9 @@ jobs:
           # Re-running the workflow with the same tag refreshes the assets of the
           # draft that is already there instead of failing.
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release upload "$tag" dist/*.zip --clobber
+            gh release upload "$tag" dist/* --clobber
           else
-            gh release create "$tag" dist/*.zip \
+            gh release create "$tag" dist/* \
               --draft \
               --target "$COMMIT" \
               --title "$tag" \

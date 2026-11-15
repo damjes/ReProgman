@@ -8,13 +8,14 @@ The UI follows the display language of the OS — here it is on a Japanese Windo
 
 <img src="docs/assets/screenshot-ja.png">
 
-ReProgman also runs on macOS:
+ReProgman also runs on macOS and GNU/Linux:
 
 <img src="docs/assets/screenshot-ja-macos.png">
 
 ## Requirements
 - Windows 11 (x64, Arm)
 - macOS (Apple Silicon)
+- GNU/Linux (x64, Arm64; X11 or Wayland)
 
 ## Install & Run
 Download the executable from Releases and run it.
@@ -25,6 +26,12 @@ The macOS build is not notarized, so its extended attributes have to be removed 
 xattr -cr ReProgman.app
 ```
 
+On Linux, the first launch imports installed applications from XDG
+`applications` directories. Refresh from Applications imports later additions.
+Entries use the desktop file's `Exec` command and are grouped by its standard
+category. Settings stay beside the executable when that directory is writable;
+otherwise they are stored in `${XDG_CONFIG_HOME:-~/.config}/ReProgman`.
+
 ## Build & Debug
 
 Building and running needs the .NET SDK 10.0+.
@@ -32,6 +39,16 @@ Building and running needs the .NET SDK 10.0+.
 ```csharp
 dotnet run --project src/ReProgman
 ```
+
+Create a self-contained Linux build with the .NET 10 SDK, Clang and the platform's
+zlib development package:
+
+```sh
+build/publish-linux.sh linux-x64
+# or: build/publish-linux.sh linux-arm64
+```
+
+The script writes a runnable directory and a `.tar.gz` archive under `artifacts/`.
 
 ## License
 

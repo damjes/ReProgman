@@ -11,6 +11,12 @@ public static class ShellLauncher
     /// <summary>Launches a shortcut or application the way a double click would.</summary>
     public static void Launch(string path, bool minimized = false)
     {
+        if (OperatingSystem.IsLinux() && path.EndsWith(".desktop", StringComparison.OrdinalIgnoreCase))
+        {
+            XdgDesktopLauncher.Launch(path);
+            return;
+        }
+
         if (OperatingSystem.IsMacOS())
         {
             StartOnMac(path, arguments: null);
@@ -38,9 +44,15 @@ public static class ShellLauncher
         }
 
         var (fileName, arguments) = SplitCommandLine(text);
+        if (OperatingSystem.IsLinux() && fileName.EndsWith(".desktop", StringComparison.OrdinalIgnoreCase))
+        {
+            XdgDesktopLauncher.Launch(fileName);
+            return;
+        }
+
         if (OperatingSystem.IsMacOS())
         {
-            // Run Minimized has no macOS equivalent, so the checkbox is ignored here.
+            // Run Minimized has no macOS or Linux equivalent, so the checkbox is ignored here.
             StartOnMac(fileName, arguments);
             return;
         }

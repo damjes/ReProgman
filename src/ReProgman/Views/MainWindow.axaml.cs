@@ -547,9 +547,8 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// The folders the initial groups are built from. macOS mirrors the Windows
-    /// per-user / machine-wide pair, with the user's own folder first so that a
-    /// privately installed application wins over the system copy.
+    /// The folders the initial groups are built from. macOS and Linux place user
+    /// installations before system-wide entries so private copies win.
     /// </summary>
     private static string[] StartMenuRoots => OperatingSystem.IsMacOS()
         ?
@@ -558,11 +557,18 @@ public partial class MainWindow : Window
             "/Applications",
             "/System/Applications",
         ]
-        :
-        [
-            Environment.GetFolderPath(Environment.SpecialFolder.Programs),
-            Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms),
-        ];
+        : OperatingSystem.IsLinux()
+            ? XdgPaths.ApplicationRoots
+            :
+            [
+                Environment.GetFolderPath(Environment.SpecialFolder.Programs),
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms),
+            ];
+
+    private static IReadOnlyList<ProgramGroup> ScanPrograms(string[] roots, string mainGroupName) =>
+        OperatingSystem.IsLinux()
+            ? new XdgDesktopFileSource().Scan(roots, mainGroupName)
+            : new StartMenuScanner(AppEntrySources.ForCurrentPlatform()).Scan(roots, mainGroupName);
 
     private void LoadGroupsAsync()
     {
@@ -576,7 +582,7 @@ public partial class MainWindow : Window
 
         var roots = StartMenuRoots;
         var mainGroupName = Strings.MainGroupName;
-        Task.Run(() => new StartMenuScanner(AppEntrySources.ForCurrentPlatform()).Scan(roots, mainGroupName)).ContinueWith(
+        Task.Run(() => ScanPrograms(roots, mainGroupName)).ContinueWith(
             task =>
             {
                 var groups = task.IsCompletedSuccessfully ? task.Result : [];
@@ -1422,7 +1428,7 @@ public partial class MainWindow : Window
     {
         var roots = StartMenuRoots;
         var mainGroupName = Strings.MainGroupName;
-        var scanned = await Task.Run(() => new StartMenuScanner(AppEntrySources.ForCurrentPlatform()).Scan(roots, mainGroupName));
+        var scanned = await Task.Run(() => ScanPrograms(roots, mainGroupName));
         var result = StartMenuMerge.Merge(_groups.Select(g => g.Vm.ToModel()).ToList(), scanned);
         if (result.AddedGroups == 0 && result.AddedItems == 0)
         {

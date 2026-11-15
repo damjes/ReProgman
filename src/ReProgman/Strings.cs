@@ -31,7 +31,7 @@ public static class Strings
     // File menu: editing
     // The command scans whatever the platform calls its program folder, so the
     // label names the place the user actually knows.
-    public static string MenuRefresh => OperatingSystem.IsMacOS()
+    public static string MenuRefresh => OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()
         ? T("Re_fresh from Applications", "アプリケーションから取り込み(_F)")
         : T("Re_fresh from Start Menu", "スタートメニューから取り込み(_F)");
     public static string NewTitle => T("New Program Object", "新規登録");
@@ -65,7 +65,7 @@ public static class Strings
     public static string ErrEmptyDescription => T("The description cannot be empty.", "説明を入力してください。");
 
     public static string RefreshResult(int groups, int items) => string.Format(
-        OperatingSystem.IsMacOS()
+        OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()
             ? T("Added {0} group(s) and {1} item(s) from Applications.", "アプリケーションから {0} 個のグループと {1} 個のアイテムを取り込みました。")
             : T("Added {0} group(s) and {1} item(s) from the Start Menu.", "スタート メニューから {0} 個のグループと {1} 個のアイテムを取り込みました。"),
         groups,

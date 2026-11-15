@@ -21,6 +21,11 @@ public static class IconLoader
             return MacIconLoader.GetLargeIcon(path);
         }
 
+        if (OperatingSystem.IsLinux())
+        {
+            return XdgIconLoader.GetLargeIcon(path);
+        }
+
         return null;
     }
 }
