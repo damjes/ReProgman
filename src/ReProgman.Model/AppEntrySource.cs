@@ -200,9 +200,9 @@ public sealed record DesktopApplication(string Name, string Path, string Exec, s
 
     private static bool ExecutableExists(string executable)
     {
-        if (executable.Contains(Path.DirectorySeparatorChar)) return File.Exists(executable);
-        return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
-            .Any(directory => File.Exists(Path.Combine(directory, executable)));
+        if (executable.Contains(System.IO.Path.DirectorySeparatorChar)) return File.Exists(executable);
+        return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(System.IO.Path.PathSeparator)
+            .Any(directory => File.Exists(System.IO.Path.Combine(directory, executable)));
     }
 }
 
